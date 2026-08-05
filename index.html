@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f2439" />
+  <title>Social Reflow AI</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <span class="eyebrow">AI DESIGN REFLOW</span>
+        <h1>Social Reflow AI</h1>
+        <p>Reconstruct one flattened social post as editable layers for another platform.</p>
+      </div>
+      <button id="resetButton" class="ghost-button hidden" type="button">Start over</button>
+    </header>
+
+    <section id="welcomeView" class="welcome-grid">
+      <div class="hero-copy">
+        <h2>Upload once. Rebuild intelligently.</h2>
+        <p>Gemini identifies text, logos, products, images, shapes, and hierarchy. Your browser extracts those areas and reconstructs them on the selected platform canvas.</p>
+        <div class="feature-strip">
+          <span>✓ No full-post cropping</span>
+          <span>✓ Editable layers</span>
+          <span>✓ Exact-size PNG</span>
+        </div>
+      </div>
+      <button id="uploadZone" class="uploader" type="button">
+        <span class="upload-icon">↥</span>
+        <strong>Upload your original post</strong>
+        <small>PNG, JPG, or WebP · maximum 12 MB</small>
+      </button>
+      <input id="imageInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" />
+    </section>
+
+    <section id="setupView" class="setup-grid hidden">
+      <div class="panel">
+        <h2>1. Original design</h2>
+        <div class="source-preview">
+          <img id="sourcePreview" alt="Uploaded social post" />
+          <div id="sourceMeta" class="image-meta"></div>
+        </div>
+      </div>
+
+      <div class="panel setup-panel">
+        <h2>2. Choose the target</h2>
+        <label>
+          Platform size
+          <select id="targetSelect"></select>
+        </label>
+
+        <label class="checkbox-card">
+          <input id="cleanupToggle" type="checkbox" checked />
+          <span>
+            <strong>Automatically isolate logos and products</strong>
+            <small>Uses local edge-colour separation. It works best when an asset sits on a simple, mostly solid background.</small>
+          </span>
+        </label>
+
+        <div class="target-card">
+          <span id="targetPlatform"></span>
+          <strong id="targetDimensions"></strong>
+          <div id="ratioBox" class="ratio-box"></div>
+        </div>
+
+        <button id="analyzeButton" class="primary-button" type="button">Analyse and rebuild</button>
+        <p id="setupStatus" class="status-text hidden"></p>
+        <p id="setupError" class="error-text hidden"></p>
+      </div>
+    </section>
+
+    <section id="workspaceView" class="workspace hidden">
+      <div class="workspace-topbar">
+        <div>
+          <span class="eyebrow">TARGET OUTPUT</span>
+          <h2 id="workspaceTitle"></h2>
+          <p id="workspaceMeta"></p>
+        </div>
+        <div class="action-row">
+          <button id="reanalyzeButton" class="secondary-button" type="button">Re-analyse</button>
+          <button id="downloadButton" class="primary-button compact" type="button">Download PNG</button>
+        </div>
+      </div>
+
+      <div id="warningBox" class="warning-box hidden">
+        <strong>Review required</strong>
+        <ul id="warningList"></ul>
+      </div>
+
+      <div class="editor-grid">
+        <aside class="layer-list">
+          <h3>Detected layers</h3>
+          <div id="layerRows"></div>
+        </aside>
+
+        <div class="canvas-area">
+          <div id="canvasWrap" class="canvas-shell">
+            <canvas id="editorCanvas"></canvas>
+          </div>
+          <p class="canvas-help">Drag any layer to correct its position. Select a layer to edit it.</p>
+        </div>
+
+        <aside id="inspector" class="inspector">
+          <div id="inspectorEmpty" class="empty-inspector">
+            <h3>Element editor</h3>
+            <p>Select an item on the canvas or from the layer list.</p>
+          </div>
+          <div id="inspectorContent" class="hidden">
+            <div class="inspector-heading">
+              <div>
+                <span id="elementType" class="type-pill"></span>
+                <h3 id="elementLabel"></h3>
+              </div>
+              <label class="switch-row">
+                <input id="elementVisible" type="checkbox" /> Visible
+              </label>
+            </div>
+
+            <div id="textControls" class="control-group hidden">
+              <label>Text<textarea id="elementText" rows="5"></textarea></label>
+              <div class="form-grid two">
+                <label>Text colour<input id="elementColor" type="color" /></label>
+                <label>Alignment
+                  <select id="elementAlignment">
+                    <option value="left">Left</option>
+                    <option value="center">Centre</option>
+                    <option value="right">Right</option>
+                  </select>
+                </label>
+              </div>
+              <label>Font-size ratio<input id="elementFontSize" type="range" min="0.012" max="0.14" step="0.002" /><span id="fontSizeValue" class="range-value"></span></label>
+            </div>
+
+            <div id="shapeControls" class="control-group hidden">
+              <div class="form-grid two">
+                <label>Fill colour<input id="elementFill" type="color" /></label>
+                <label>Opacity<input id="elementOpacity" type="range" min="0" max="1" step="0.05" /></label>
+              </div>
+            </div>
+
+            <div id="assetControls" class="control-group hidden">
+              <img id="assetPreview" class="asset-preview" alt="Extracted asset" />
+              <button id="replaceAssetButton" class="secondary-button full" type="button">Replace with official asset</button>
+              <input id="assetInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" />
+              <p class="field-help">For perfect brand fidelity, replace extracted logos or products with their original transparent files.</p>
+            </div>
+
+            <label>Rotation<input id="elementRotation" type="range" min="-30" max="30" step="1" /></label>
+            <p id="elementNote" class="analysis-note hidden"></p>
+          </div>
+        </aside>
+      </div>
+
+      <details class="analysis-details">
+        <summary>View AI layout reasoning</summary>
+        <p id="sourceSummary"></p>
+        <p><strong>Strategy:</strong> <span id="targetStrategy"></span></p>
+        <p><strong>Background:</strong> <span id="backgroundNotes"></span></p>
+      </details>
+      <p id="workspaceStatus" class="status-text footer-status hidden"></p>
+      <p id="workspaceError" class="error-text hidden"></p>
+    </section>
+
+    <footer>Images are processed locally except for the design-analysis request sent through your private Cloudflare Worker to Gemini.</footer>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
