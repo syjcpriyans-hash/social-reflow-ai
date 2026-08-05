@@ -1,0 +1,36 @@
+SOCIAL REFLOW AI — GITHUB + VERCEL
+
+FASTEST DEPLOYMENT
+
+1. Create a free GitHub repository named: social-reflow-ai
+2. Upload every file from this folder to the repository.
+3. Open vercel.com and sign in with GitHub.
+4. Click Add New > Project.
+5. Import the social-reflow-ai repository.
+6. Leave Framework Preset as Other and keep the root directory unchanged.
+7. Add these Environment Variables before deployment:
+
+   GEMINI_API_KEY = your real Gemini API key
+   GEMINI_MODEL = gemini-3.5-flash
+
+8. Click Deploy.
+9. Open the Vercel URL and test the app.
+
+IMPORTANT
+- Never upload .env.local or your Gemini key to GitHub.
+- The API key stays in the Vercel server function.
+- After deployment, every push to GitHub creates a new Vercel deployment.
+- The app compresses only the AI-analysis copy of the uploaded image. The original image stays in your browser for layer extraction and final PNG export.
+
+LOCAL TESTING
+
+1. Install Node.js LTS.
+2. Open a terminal in this folder.
+3. Run: npm install
+4. Copy .env.example to .env.local
+5. Put your real Gemini API key in .env.local
+6. Run: npx vercel login
+7. Run: npm run dev
+8. Open the local URL shown in the terminal.
+
+Read README.md for detailed GitHub, Vercel, testing, security, and troubleshooting instructions.

@@ -5,85 +5,8 @@ const ANCHORS = [
   "bottom-left", "bottom-center", "bottom-right"
 ];
 
-const elementProperties = {
-  id: { type: "string" },
-  type: { type: "string", enum: ELEMENT_TYPES },
-  label: { type: "string" },
-  text: { type: "string" },
-  sourceBox: {
-    type: "array",
-    minItems: 4,
-    maxItems: 4,
-    items: { type: "number" },
-    description: "[ymin,xmin,ymax,xmax] normalized from 0 to 1000"
-  },
-  targetBox: {
-    type: "array",
-    minItems: 4,
-    maxItems: 4,
-    items: { type: "number" },
-    description: "[ymin,xmin,ymax,xmax] normalized from 0 to 1000"
-  },
-  anchor: { type: "string", enum: ANCHORS },
-  alignment: { type: "string", enum: ["left", "center", "right"] },
-  fontFamily: { type: "string" },
-  fontWeight: { type: "integer" },
-  fontSizeRatio: { type: "number" },
-  color: { type: "string" },
-  backgroundColor: { type: "string" },
-  borderColor: { type: "string" },
-  borderWidthRatio: { type: "number" },
-  borderRadiusRatio: { type: "number" },
-  rotation: { type: "number" },
-  opacity: { type: "number" },
-  zIndex: { type: "integer" },
-  importance: { type: "integer" },
-  preserveExactly: { type: "boolean" },
-  removeBackgroundRecommended: { type: "boolean" },
-  notes: { type: "string" }
-};
-
-const backgroundSchema = {
-  type: "object",
-  properties: {
-    type: { type: "string", enum: ["solid", "linear-gradient", "complex", "photographic"] },
-    colors: { type: "array", minItems: 1, items: { type: "string" } },
-    angle: { type: "number" },
-    confidence: { type: "number" },
-    notes: { type: "string" }
-  },
-  required: ["type", "colors", "angle", "confidence", "notes"]
-};
-
-const responseSchema = {
-  type: "object",
-  properties: {
-    title: { type: "string" },
-    sourceSummary: { type: "string" },
-    sourceBackground: backgroundSchema,
-    targetBackground: backgroundSchema,
-    targetStrategy: { type: "string" },
-    confidence: { type: "number" },
-    warnings: { type: "array", items: { type: "string" } },
-    elements: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: elementProperties,
-        required: [
-          "id", "type", "label", "text", "sourceBox", "targetBox",
-          "anchor", "alignment", "zIndex", "importance",
-          "preserveExactly", "removeBackgroundRecommended"
-        ]
-      },
-      maxItems: 30
-    }
-  },
-  required: [
-    "title", "sourceSummary", "sourceBackground", "targetBackground",
-    "targetStrategy", "confidence", "warnings", "elements"
-  ]
-};
+// Gemini structured-output schemas can be rejected when they are large or deeply nested.
+// This endpoint uses JSON response mode plus server-side validation instead.
 
 export async function POST(request) {
   if (!process.env.GEMINI_API_KEY) {
@@ -127,9 +50,8 @@ export async function POST(request) {
             }],
             generationConfig: {
               responseMimeType: "application/json",
-              responseSchema,
               thinkingConfig: { thinkingLevel: "minimal" },
-              maxOutputTokens: 16000
+              maxOutputTokens: 12000
             }
           })
         }
@@ -146,25 +68,33 @@ export async function POST(request) {
       throw new Error(`Gemini returned a non-JSON response (${geminiResponse.status}): ${geminiRaw.slice(0, 300)}`);
     }
     if (!geminiResponse.ok) {
-      throw new Error(geminiJson?.error?.message || `Gemini request failed (${geminiResponse.status}).`);
+      const upstreamMessage = geminiJson?.error?.message || `Gemini request failed (${geminiResponse.status}).`;
+      const error = new Error(upstreamMessage);
+      error.upstreamStatus = geminiResponse.status;
+      throw error;
     }
 
-    const output = geminiJson?.candidates?.[0]?.content?.parts
+    const candidate = geminiJson?.candidates?.[0];
+    const output = candidate?.content?.parts
       ?.map((part) => part.text || "")
       .join("");
-    if (!output) throw new Error("Gemini returned an empty analysis.");
+    if (!output) {
+      throw new Error(`Gemini returned an empty analysis${candidate?.finishReason ? ` (${candidate.finishReason})` : ""}.`);
+    }
 
-    const plan = JSON.parse(output);
+    const plan = parseJsonOutput(output);
     sanitizePlan(plan);
     return json({ plan });
   } catch (error) {
     console.error(error);
+    const status = Number(error?.upstreamStatus);
     return json({
       error: "Could not analyse this design.",
       details: error?.name === "AbortError"
         ? "Gemini analysis took longer than 45 seconds. Try again or use a smaller/simpler source image."
-        : (error instanceof Error ? error.message : "Unknown analysis error.")
-    }, 500);
+        : (error instanceof Error ? error.message : "Unknown analysis error."),
+      upstreamStatus: Number.isFinite(status) ? status : undefined
+    }, Number.isFinite(status) && status >= 400 && status < 500 ? 400 : 500);
   }
 }
 
@@ -199,7 +129,46 @@ NON-NEGOTIABLE RULES:
 16. Include all visible brand, legal, contact, feature, CTA, and disclaimer information.
 17. Keep targetBox dimensions large enough to contain the full exact text after wrapping.
 
-The result will be rendered by code, not by an image generator. Accuracy and complete element coverage matter more than artistic commentary.`;
+The result will be rendered by code, not by an image generator. Accuracy and complete element coverage matter more than artistic commentary.
+
+Return one JSON object only, using this exact top-level structure:
+{
+  "title": "string",
+  "sourceSummary": "string",
+  "sourceBackground": {"type":"solid|linear-gradient|complex|photographic","colors":["#ffffff"],"angle":0,"confidence":0.9,"notes":"string"},
+  "targetBackground": {"type":"solid|linear-gradient|complex|photographic","colors":["#ffffff"],"angle":0,"confidence":0.9,"notes":"string"},
+  "targetStrategy": "string",
+  "confidence": 0.9,
+  "warnings": ["string"],
+  "elements": [
+    {
+      "id":"unique-id",
+      "type":"text|logo|product|photo|icon|shape|decoration",
+      "label":"string",
+      "text":"exact text or empty string",
+      "sourceBox":[0,0,100,100],
+      "targetBox":[0,0,100,100],
+      "anchor":"top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right",
+      "alignment":"left|center|right",
+      "fontFamily":"Arial",
+      "fontWeight":400,
+      "fontSizeRatio":0.04,
+      "color":"#111111",
+      "backgroundColor":"transparent",
+      "borderColor":"transparent",
+      "borderWidthRatio":0,
+      "borderRadiusRatio":0,
+      "rotation":0,
+      "opacity":1,
+      "zIndex":1,
+      "importance":5,
+      "preserveExactly":false,
+      "removeBackgroundRecommended":false,
+      "notes":"string"
+    }
+  ]
+}
+Do not wrap the JSON in Markdown fences.`;
 }
 
 function validateRequest(body) {
@@ -209,8 +178,41 @@ function validateRequest(body) {
   if (!body.target || !Number.isFinite(body.target.width) || !Number.isFinite(body.target.height)) throw new Error("Invalid target dimensions.");
 }
 
+function parseJsonOutput(output) {
+  const trimmed = String(output || "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const withoutFences = trimmed
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    try {
+      return JSON.parse(withoutFences);
+    } catch {
+      const firstBrace = withoutFences.indexOf("{");
+      const lastBrace = withoutFences.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        return JSON.parse(withoutFences.slice(firstBrace, lastBrace + 1));
+      }
+      throw new Error("Gemini returned text that could not be parsed as JSON.");
+    }
+  }
+}
+
 function sanitizePlan(plan) {
-  if (!plan || !Array.isArray(plan.elements)) throw new Error("Gemini returned an invalid element plan.");
+  if (!plan || typeof plan !== "object" || !Array.isArray(plan.elements)) {
+    throw new Error("Gemini returned an invalid element plan.");
+  }
+  plan.title = String(plan.title || "Reflowed design");
+  plan.sourceSummary = String(plan.sourceSummary || "Source design analysed.");
+  plan.targetStrategy = String(plan.targetStrategy || "Elements reflowed for the target canvas.");
+  plan.sourceBackground = plan.sourceBackground && typeof plan.sourceBackground === "object"
+    ? plan.sourceBackground
+    : { type: "solid", colors: ["#ffffff"], angle: 0, confidence: 0.5, notes: "Fallback background." };
+  plan.targetBackground = plan.targetBackground && typeof plan.targetBackground === "object"
+    ? plan.targetBackground
+    : { type: "solid", colors: ["#ffffff"], angle: 0, confidence: 0.5, notes: "Fallback background." };
   plan.confidence = clampNumber(plan.confidence, 0, 1, 0.5);
   plan.warnings = Array.isArray(plan.warnings) ? plan.warnings.map(String) : [];
 
