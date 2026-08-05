@@ -70,8 +70,13 @@ const responseSchema = {
       items: {
         type: "object",
         properties: elementProperties,
-        required: Object.keys(elementProperties)
-      }
+        required: [
+          "id", "type", "label", "text", "sourceBox", "targetBox",
+          "anchor", "alignment", "zIndex", "importance",
+          "preserveExactly", "removeBackgroundRecommended"
+        ]
+      },
+      maxItems: 30
     }
   },
   required: [
@@ -96,34 +101,50 @@ export async function POST(request) {
     if (!match) throw new Error("The uploaded image data is invalid.");
     const mimeType = match[1];
     const base64Data = match[2];
-    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GEMINI_API_KEY
-        },
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [
-              { text: buildPrompt(body) },
-              { inlineData: { mimeType, data: base64Data } }
-            ]
-          }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema,
-            temperature: 0.15
-          }
-        })
-      }
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    let geminiResponse;
 
-    const geminiJson = await geminiResponse.json();
+    try {
+      geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": process.env.GEMINI_API_KEY
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{
+              role: "user",
+              parts: [
+                { text: buildPrompt(body) },
+                { inlineData: { mimeType, data: base64Data } }
+              ]
+            }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema,
+              thinkingConfig: { thinkingLevel: "minimal" },
+              maxOutputTokens: 16000
+            }
+          })
+        }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const geminiRaw = await geminiResponse.text();
+    let geminiJson;
+    try {
+      geminiJson = geminiRaw ? JSON.parse(geminiRaw) : {};
+    } catch {
+      throw new Error(`Gemini returned a non-JSON response (${geminiResponse.status}): ${geminiRaw.slice(0, 300)}`);
+    }
     if (!geminiResponse.ok) {
       throw new Error(geminiJson?.error?.message || `Gemini request failed (${geminiResponse.status}).`);
     }
@@ -140,7 +161,9 @@ export async function POST(request) {
     console.error(error);
     return json({
       error: "Could not analyse this design.",
-      details: error instanceof Error ? error.message : "Unknown analysis error."
+      details: error?.name === "AbortError"
+        ? "Gemini analysis took longer than 45 seconds. Try again or use a smaller/simpler source image."
+        : (error instanceof Error ? error.message : "Unknown analysis error.")
     }, 500);
   }
 }

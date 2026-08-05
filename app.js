@@ -129,8 +129,25 @@ async function analyzeAndBuild() {
         target: state.target
       })
     });
-    const result = await response.json();
-    if (!response.ok || !result.plan) throw new Error(result.details || result.error || "AI analysis failed.");
+
+    // Vercel can return a plain-text platform error when a function times out
+    // or crashes. Read the body as text first so the UI shows the real error
+    // instead of "Unexpected token ... is not valid JSON".
+    const rawResponse = await response.text();
+    let result = {};
+    if (rawResponse) {
+      try {
+        result = JSON.parse(rawResponse);
+      } catch {
+        const preview = rawResponse.replace(/\s+/g, " ").trim().slice(0, 500);
+        throw new Error(`Server error ${response.status}: ${preview || response.statusText}`);
+      }
+    }
+
+    if (!response.ok || !result.plan) {
+      const message = result.details || result.error || response.statusText || "AI analysis failed.";
+      throw new Error(`${message} (HTTP ${response.status})`);
+    }
 
     state.plan = result.plan;
     state.elements = [];
@@ -170,9 +187,9 @@ async function analyzeAndBuild() {
 }
 
 async function prepareAnalysisDataUrl(image) {
-  const limits = [2048, 1792, 1536, 1280];
-  const qualities = [0.86, 0.78, 0.68, 0.58];
-  const maxDataUrlLength = 3_300_000;
+  const limits = [1600, 1440, 1280, 1120];
+  const qualities = [0.82, 0.74, 0.66, 0.58];
+  const maxDataUrlLength = 1_900_000;
 
   for (const maxSide of limits) {
     const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));

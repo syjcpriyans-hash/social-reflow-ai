@@ -369,3 +369,8 @@ Use the layer replacement control to upload the original transparent logo or pro
 - The Gemini key remains in the Vercel Function environment.
 - No database is used.
 - Free plans and API quotas can change, so unlimited free operation is not guaranteed.
+
+
+## August 2026 reliability patch
+
+This package uses `gemini-3.5-flash-lite` by default, minimal thinking, a smaller analysis image, a 45-second upstream timeout, and safe parsing of non-JSON Vercel platform errors. In Vercel Environment Variables, set `GEMINI_MODEL` to `gemini-3.5-flash-lite` or remove the variable to use the default.
